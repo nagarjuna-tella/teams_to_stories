@@ -4,25 +4,50 @@ import json
 import uuid
 import re
 from openai import AzureOpenAI
+from azure.cosmos import CosmosClient, PartitionKey
 import os
 
 app = func.FunctionApp()
 
-class InMemoryStore:
-    def __init__(self):
-        self._store = {}
+# Retrieve Cosmos DB configuration from environment variables
+COSMOS_ENDPOINT = os.getenv("COSMOS_DB_ENDPOINT")
+COSMOS_KEY = os.getenv("COSMOS_DB_KEY")
+DATABASE_NAME = os.getenv("COSMOS_DB_DATABASE", "TranscriptsDB")
+CONTAINER_NAME = os.getenv("COSMOS_DB_CONTAINER", "Transcripts")
+
+client = CosmosClient(COSMOS_ENDPOINT, COSMOS_KEY)
+database = client.create_database_if_not_exists(id=DATABASE_NAME)
+container = database.create_container_if_not_exists(
+    id=CONTAINER_NAME,
+    partition_key=PartitionKey(path="/id"),
+    offer_throughput=400
+)
+
+class CosmosDBStore:
+    def __init__(self, container):
+        self.container = container
 
     def save(self, key, value):
-        self._store[key] = value
+        value["id"] = key  # Cosmos DB requires an "id" field.
+        self.container.create_item(body=value)
 
     def get(self, key):
-        return self._store.get(key)
+        try:
+            return self.container.read_item(item=key, partition_key=key)
+        except Exception as e:
+            logging.error(f"Error reading item from Cosmos DB: {e}")
+            return None
 
     def update(self, key, updates: dict):
-        if key in self._store:
-            self._store[key].update(updates)
+        item = self.get(key)
+        if item:
+            item.update(updates)
+            self.container.replace_item(item=item, body=item)
+            return item
+        return None
 
-db = InMemoryStore()
+# Instantiate the CosmosDBStore
+db = CosmosDBStore(container)
 
 def clean_transcript(raw_transcript: str) -> str:
     """
@@ -166,24 +191,27 @@ def ProcessTranscription(req: func.HttpRequest) -> func.HttpResponse:
     cleaned_transcript = clean_transcript(raw_transcript)
     transcript_id = str(uuid.uuid4())
     
-    # Save the cleaned transcript and initial state to our "database"
-    db[transcript_id] = {
+    # Save the cleaned transcript and initial state to Cosmos DB
+    record = {
         "transcript": cleaned_transcript,
         "status": "Submitted",
         "stories": []
     }
+    db.save(transcript_id, record)
     
     # Process the transcript with Azure OpenAI to extract user stories.
     logging.info(f"Processing transcript {transcript_id} with Azure OpenAI")
     generated_stories = extract_user_stories(cleaned_transcript)
     
-    # Update our "database" with the generated stories and new status.
-    db[transcript_id]["stories"] = generated_stories
-    db[transcript_id]["status"] = "ReadyForReview"
+    # Update the record with generated stories and new status.
+    db.update(transcript_id, {
+        "stories": generated_stories,
+        "status": "ReadyForReview"
+    })
     
     response = {
         "transcript_id": transcript_id,
-        "status": db[transcript_id]["status"]
+        "status": "ReadyForReview"
     }
     return func.HttpResponse(json.dumps(response), mimetype="application/json", status_code=202)
 

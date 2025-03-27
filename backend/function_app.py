@@ -9,6 +9,16 @@ import os
 
 app = func.FunctionApp()
 
+# Check required environment variables (log a warning if missing)
+required_env = [
+    "COSMOS_DB_ENDPOINT", "COSMOS_DB_KEY", "AZURE_OPENAI_API_KEY",
+    "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT_NAME"
+]
+for var in required_env:
+    if not os.getenv(var):
+        logging.warning(f"Environment variable {var} is not set.")
+        
+
 # Retrieve Cosmos DB configuration from environment variables
 COSMOS_ENDPOINT = os.getenv("COSMOS_DB_ENDPOINT")
 COSMOS_KEY = os.getenv("COSMOS_DB_KEY")

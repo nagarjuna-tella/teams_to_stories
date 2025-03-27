@@ -8,8 +8,21 @@ import os
 
 app = func.FunctionApp()
 
-# In-memory state store (for demo purposes; replace with persistent storage in production)
-db = {}
+class InMemoryStore:
+    def __init__(self):
+        self._store = {}
+
+    def save(self, key, value):
+        self._store[key] = value
+
+    def get(self, key):
+        return self._store.get(key)
+
+    def update(self, key, updates: dict):
+        if key in self._store:
+            self._store[key].update(updates)
+
+db = InMemoryStore()
 
 def clean_transcript(raw_transcript: str) -> str:
     """

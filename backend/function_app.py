@@ -8,20 +8,20 @@ import os
 
 app = func.FunctionApp()
 
+# In-memory state store (for demo purposes; replace with persistent storage in production)
 db = {}
 
 def clean_transcript(raw_transcript: str) -> str:
     """
     Clean a Microsoft Teams transcript.
-    
+
     This function performs the following cleaning steps:
       - Removes timestamps in the format "HH:MM:SS" (with optional AM/PM).
       - Removes speaker names that precede dialogue (assumed to be any text ending with a colon right after the timestamp).
       - Strips extra whitespace and joins the cleaned lines.
-      
+
     Example Input:
       "00:01:23 John Doe: Hello, everyone!\n00:01:25 Jane Smith: Hi, John!"
-      
     Example Output:
       "Hello, everyone! Hi, John!"
     """
@@ -45,13 +45,12 @@ def clean_transcript(raw_transcript: str) -> str:
         if cleaned_line:
             cleaned_lines.append(cleaned_line)
     
-    # Join all cleaned lines into one string with a single space separator
     return ' '.join(cleaned_lines)
 
 def extract_user_stories(transcript_text: str) -> list:
     """
     Processes the transcript using Azure OpenAI to generate user stories.
-
+    
     Returns a list of user story dictionaries with keys:
       - title
       - userStory
@@ -61,15 +60,22 @@ def extract_user_stories(transcript_text: str) -> list:
       - tags
     """
     try:
-        # Initialize the AzureOpenAI client with your endpoint and API key
-        client = AzureOpenAI(
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            api_version="2024-02-01",
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-        )
+        # Get configuration from environment variables
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
         
-        # Build the prompt for generating user stories
+        if not api_key or not azure_endpoint or not deployment_name:
+            logging.error("Missing one or more Azure OpenAI configuration values.")
+            return []
+        
+        client = AzureOpenAI(
+            api_key=api_key,
+            api_version="2024-02-01",
+            azure_endpoint=azure_endpoint
+        )
+        
+        # Build prompt to instruct the model to generate user stories
         prompt = f"""
 You are an expert agile product owner. Convert the following transcript into well-formed user stories.
 
@@ -105,6 +111,7 @@ Return only valid JSON. For example:
             prompt=prompt,
             max_tokens=1500
         )
+        logging.debug(f"Azure OpenAI raw response: {response}")
         
         # Extract and clean the text response
         completion_text = response.choices[0].text.strip()
@@ -113,8 +120,12 @@ Return only valid JSON. For example:
         if json_start != -1:
             completion_text = completion_text[json_start:]
         
-        # Parse the JSON response
-        user_stories_json = json.loads(completion_text)
+        try:
+            user_stories_json = json.loads(completion_text)
+        except json.JSONDecodeError as je:
+            logging.error(f"JSON decoding error: {je}. Raw text: {completion_text}")
+            return []
+        
         return user_stories_json.get("stories", [])
     
     except Exception as e:
@@ -138,7 +149,7 @@ def ProcessTranscription(req: func.HttpRequest) -> func.HttpResponse:
     if not raw_transcript:
         return func.HttpResponse("Missing 'transcript' field", status_code=400)
     
-    # Clean the transcript (e.g., remove timestamps, speaker names, etc.)
+    # Clean the transcript
     cleaned_transcript = clean_transcript(raw_transcript)
     transcript_id = str(uuid.uuid4())
     
@@ -183,6 +194,9 @@ def GetStories(req: func.HttpRequest) -> func.HttpResponse:
     }
     return func.HttpResponse(json.dumps(response), mimetype="application/json", status_code=200)
 
+# ===============================================
+# DevOps Integration API
+# ===============================================
 @app.route(route="PublishStories", methods=['POST'], auth_level=func.AuthLevel.ANONYMOUS)
 def PublishStories(req: func.HttpRequest) -> func.HttpResponse:
     try:
@@ -202,7 +216,6 @@ def PublishStories(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("Transcript not found", status_code=404)
     
     # Simulate publishing to Azure DevOps.
-    # In a real scenario, you'd call the Azure DevOps REST API here.
     published_results = []
     for story in approved_stories:
         work_item_id = str(uuid.uuid4())
@@ -212,7 +225,7 @@ def PublishStories(req: func.HttpRequest) -> func.HttpResponse:
             "devops_url": f"https://dev.azure.com/yourorg/yourproject/_workitems/edit/{work_item_id}"
         })
     
-    # Update the transcript record with a new status and published results.
+    # Update the record with published results.
     record["status"] = "Published"
     record["published_results"] = published_results
     

@@ -26,11 +26,16 @@ COSMOS_ENDPOINT = os.getenv("COSMOS_DB_ENDPOINT")
 COSMOS_KEY = os.getenv("COSMOS_DB_KEY")
 DATABASE_NAME = os.getenv("COSMOS_DB_DATABASE", "TranscriptsDB")
 CONTAINER_NAME = os.getenv("COSMOS_DB_CONTAINER", "Transcripts")
+GEN_COSMOS_DB_CONTAINER = os.getenv("GEN_COSMOS_DB_CONTAINER", "GeneratedStories")
 
 client = CosmosClient(COSMOS_ENDPOINT, COSMOS_KEY)
 database = client.create_database_if_not_exists(id=DATABASE_NAME)
 container = database.create_container_if_not_exists(
     id=CONTAINER_NAME,
+    partition_key=PartitionKey(path="/id")
+)
+gen_container = database.create_container_if_not_exists(
+    id=GEN_COSMOS_DB_CONTAINER,
     partition_key=PartitionKey(path="/id")
 )
 
@@ -59,6 +64,8 @@ class CosmosDBStore:
 
 # Instantiate the CosmosDBStore
 db = CosmosDBStore(container)
+# Instantiate the CosmosDBStore for the GeneratedStories container
+db_stories = CosmosDBStore(gen_container)
 
 def clean_transcript(raw_transcript: str) -> str:
     """
@@ -149,7 +156,8 @@ Return only valid JSON. For example:
       "acceptanceCriteria": ["Valid credentials allow login", "Invalid credentials show error"],
       "storyPoints": 3,
       "priority": "High",
-      "tags": ["Authentication", "UI"]
+      "tags": ["Authentication", "UI"],
+      "status": "New"
     }}
   ]
 }}
@@ -355,3 +363,123 @@ def ServerTest(req: func.HttpRequest) -> func.HttpResponse:
              "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response.",
              status_code=200
         )
+        
+# ===============================================
+# ProcessExistingTranscript API
+# ===============================================
+@app.route(route="ProcessExistingTranscript", methods=['POST'])
+def ProcessExistingTranscript(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        data = req.get_json()
+    except Exception as e:
+        logging.error(f"Error parsing JSON: {e}")
+        return error_response("Invalid JSON", 400)
+    
+    transcript_id = data.get("transcript_id")
+    if not transcript_id:
+        return error_response("Missing 'transcript_id'", 400)
+    
+    transcript_record = db.get(transcript_id)
+    if not transcript_record:
+        return error_response("Transcript not found", 404)
+    
+    transcript_text = transcript_record.get("transcript")
+    if not transcript_text:
+        return error_response("Transcript content missing", 500)
+    
+    logging.info(f"Processing existing transcript {transcript_id} with Azure OpenAI.")
+    generated_stories = extract_user_stories(transcript_text)
+    if not generated_stories:
+        return error_response("No stories generated", 500)
+    
+    stored_stories = []
+    for idx, story in enumerate(generated_stories):
+        story_id = f"{transcript_id}_{idx}"
+        story_record = {
+            "id": story_id,
+            "transcript_id": transcript_id,
+            "story": story,
+            "published": False,
+            "published_result": None
+        }
+        try:
+            db_stories.save(story_id, story_record)
+            stored_stories.append(story_record)
+        except Exception as e:
+            logging.error(f"Error saving story {story_id}: {e}")
+    
+    response_payload = {
+        "transcript_id": transcript_id,
+        "stored_stories": stored_stories
+    }
+    return func.HttpResponse(json.dumps(response_payload), mimetype="application/json", status_code=200)
+
+# ===============================================
+# PublishStory API
+# ===============================================
+@app.route(route="PublishStory", methods=['POST'])
+def PublishStory(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        data = req.get_json()
+    except Exception as e:
+        logging.error(f"Error parsing JSON: {e}")
+        return error_response("Invalid JSON", 400)
+    
+    transcript_id = data.get("transcript_id")
+    story_id = data.get("story_id")
+    if not transcript_id or not story_id:
+        return error_response("Both 'transcript_id' and 'story_id' are required", 400)
+    
+    story_record = db_stories.get(story_id)
+    if not story_record:
+        return error_response("Story not found", 404)
+    
+    devops_pat = os.getenv("AZURE_DEVOPS_PAT")
+    devops_org = os.getenv("AZURE_DEVOPS_ORG")
+    devops_project = os.getenv("AZURE_DEVOPS_PROJECT")
+    if not devops_pat or not devops_org or not devops_project:
+        return error_response("DevOps configuration is missing", 500)
+    
+    auth_str = f":{devops_pat}"
+    encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+    headers = {
+        "Content-Type": "application/json-patch+json",
+        "Authorization": f"Basic {encoded_auth}"
+    }
+    
+    story = story_record.get("story", {})
+    title = story.get("title")
+    if not title:
+        return error_response("Story title missing", 400)
+    
+    payload = [
+        {"op": "add", "path": "/fields/System.Title", "value": title}
+    ]
+    
+    url = f"https://dev.azure.com/{devops_org}/{devops_project}/_apis/wit/workitems/$Issue?api-version=6.0"
+    
+    try:
+        r = requests.post(url, headers=headers, json=payload)
+        if r.status_code in (200, 201):
+            result = r.json()
+            published_result = {
+                "work_item_id": result.get("id"),
+                "devops_url": result.get("_links", {}).get("html", {}).get("href")
+            }
+            # **Correction**: Use db_stories.update() to update the story record.
+            db_stories.update(story_id, {
+                "published": True,
+                "published_result": published_result
+            })
+            response_payload = {
+                "transcript_id": transcript_id,
+                "story_id": story_id,
+                "published_result": published_result
+            }
+            return func.HttpResponse(json.dumps(response_payload), mimetype="application/json", status_code=200)
+        else:
+            logging.error(f"Failed to publish story '{title}': {r.status_code} - {r.text}")
+            return error_response(f"Failed to publish story: {r.text}", r.status_code)
+    except Exception as e:
+        logging.error(f"Exception publishing story '{title}': {e}")
+        return error_response(f"Exception publishing story: {e}", 500)

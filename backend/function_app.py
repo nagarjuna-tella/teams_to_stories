@@ -247,16 +247,24 @@ def GetStories(req: func.HttpRequest) -> func.HttpResponse:
     if not transcript_id:
         return func.HttpResponse("Missing 'transcript_id' parameter", status_code=400)
     
-    record = db.get(transcript_id)
-    if not record:
-        return func.HttpResponse("Transcript not found", status_code=404)
+    try:
+        # Query the GeneratedStories container for all stories with the matching transcript_id.
+        query = "SELECT * FROM c WHERE c.transcript_id = @transcript_id"
+        parameters = [{"name": "@transcript_id", "value": transcript_id}]
+        generated_stories = list(gen_container.query_items(
+            query=query,
+            parameters=parameters,
+            enable_cross_partition_query=True
+        ))
+    except Exception as e:
+        logging.error(f"Error querying generated stories: {e}")
+        return func.HttpResponse(f"Error retrieving generated stories: {e}", status_code=500)
     
-    response = {
+    response_payload = {
         "transcript_id": transcript_id,
-        "status": record.get("status"),
-        "stories": record.get("stories")
+        "generated_stories": generated_stories
     }
-    return func.HttpResponse(json.dumps(response), mimetype="application/json", status_code=200)
+    return func.HttpResponse(json.dumps(response_payload), mimetype="application/json", status_code=200)
 
 # ===============================================
 # DevOps Integration API

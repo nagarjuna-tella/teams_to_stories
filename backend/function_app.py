@@ -6,8 +6,10 @@ import re
 from openai import AzureOpenAI
 from azure.cosmos import CosmosClient, PartitionKey
 import os
+import requests
+import base64
 
-app = func.FunctionApp()
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 # Check required environment variables (log a warning if missing)
 required_env = [
@@ -178,11 +180,15 @@ Return only valid JSON. For example:
     except Exception as e:
         logging.error(f"Error during Azure OpenAI call: {e}")
         return []
+    
+def error_response(message: str, status_code: int) -> func.HttpResponse:
+    payload = {"error": message}
+    return func.HttpResponse(json.dumps(payload), status_code=status_code, mimetype="application/json")
 
 # ===============================================
 # Transcript Processing API
 # ===============================================
-@app.route(route="ProcessTranscription", methods=['POST'], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="ProcessTranscription", methods=['POST'])
 def ProcessTranscription(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Received transcript processing request.')
     
@@ -227,7 +233,7 @@ def ProcessTranscription(req: func.HttpRequest) -> func.HttpResponse:
 # ===============================================
 # Stories Retrieval API
 # ===============================================
-@app.route(route="GetStories", methods=['GET'], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="GetStories", methods=['GET'])
 def GetStories(req: func.HttpRequest) -> func.HttpResponse:
     transcript_id = req.params.get("transcript_id")
     if not transcript_id:
@@ -247,46 +253,89 @@ def GetStories(req: func.HttpRequest) -> func.HttpResponse:
 # ===============================================
 # DevOps Integration API
 # ===============================================
-@app.route(route="PublishStories", methods=['POST'], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="PublishStories", methods=['POST'])
 def PublishStories(req: func.HttpRequest) -> func.HttpResponse:
     try:
         data = req.get_json()
     except Exception as e:
         logging.error(f"Error parsing JSON: {e}")
-        return func.HttpResponse("Invalid JSON", status_code=400)
+        return error_response("Invalid JSON", 400)
     
     transcript_id = data.get("transcript_id")
     approved_stories = data.get("approved_stories")
     
     if not transcript_id or not approved_stories:
-        return func.HttpResponse("Both 'transcript_id' and 'approved_stories' are required", status_code=400)
+        return error_response("Both 'transcript_id' and 'approved_stories' are required", 400)
     
     record = db.get(transcript_id)
     if not record:
-        return func.HttpResponse("Transcript not found", status_code=404)
+        return error_response("Transcript not found", 404)
     
-    # Simulate publishing to Azure DevOps.
+    # Retrieve Azure DevOps configuration from environment variables
+    devops_pat = os.getenv("AZURE_DEVOPS_PAT")
+    devops_org = os.getenv("AZURE_DEVOPS_ORG")
+    devops_project = os.getenv("AZURE_DEVOPS_PROJECT")
+    
+    if not devops_pat or not devops_org or not devops_project:
+        return error_response("DevOps configuration is missing", 500)
+    
+    # Prepare Basic Auth header using the PAT
+    auth_str = f":{devops_pat}"
+    encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+    headers = {
+        "Content-Type": "application/json-patch+json",
+        "Authorization": f"Basic {encoded_auth}"
+    }
+    
     published_results = []
     for story in approved_stories:
-        work_item_id = str(uuid.uuid4())
-        published_results.append({
-            "story_title": story.get("title"),
-            "work_item_id": work_item_id,
-            "devops_url": f"https://dev.azure.com/yourorg/yourproject/_workitems/edit/{work_item_id}"
-        })
+        title = story.get("title")
+        if not title:
+            continue
+        # Build payload for creating a work item (Issue)
+        payload = [
+            {"op": "add", "path": "/fields/System.Title", "value": title}
+            # You can extend this payload with more fields as needed.
+        ]
+        url = f"https://dev.azure.com/{devops_org}/{devops_project}/_apis/wit/workitems/$Issue?api-version=6.0"
+        try:
+            r = requests.post(url, headers=headers, json=payload)
+            if r.status_code in (200, 201):
+                result = r.json()
+                published_results.append({
+                    "story_title": title,
+                    "work_item_id": result.get("id"),
+                    "devops_url": result.get("_links", {}).get("html", {}).get("href")
+                })
+            else:
+                logging.error(f"Failed to create work item for '{title}': {r.status_code} - {r.text}")
+                published_results.append({
+                    "story_title": title,
+                    "error": r.text
+                })
+        except Exception as e:
+            logging.error(f"Exception creating work item for '{title}': {e}")
+            published_results.append({
+                "story_title": title,
+                "error": str(e)
+            })
     
-    # Update the record with published results.
-    record["status"] = "Published"
-    record["published_results"] = published_results
+    updated = db.update(transcript_id, {
+        "status": "Published",
+        "published_results": published_results
+    })
+    if not updated:
+        return error_response("Failed to update transcript with published results", 500)
     
-    response = {
+    response_payload = {
         "transcript_id": transcript_id,
         "published_results": published_results
     }
-    return func.HttpResponse(json.dumps(response), mimetype="application/json", status_code=200)
+    logging.info(f"Transcript {transcript_id} published to DevOps; results: {published_results}.")
+    return func.HttpResponse(json.dumps(response_payload), mimetype="application/json", status_code=200)
 
 
-@app.route(route="ServerTest", methods=['get'], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="ServerTest", methods=['get'])
 def ServerTest(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
 

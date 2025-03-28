@@ -18,7 +18,7 @@
           "builder": "@angular-devkit/build-angular:application",
           "options": {
             "base": "dist/teams_to_stories",
-            "outputPath": "",
+            "outputPath": "dist/teams_to_stories",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": [

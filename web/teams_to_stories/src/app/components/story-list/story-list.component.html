@@ -1,1 +1,80 @@
-<p>story-list works!</p>
+<div class="container mx-auto py-6 px-4">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-bold">User Stories</h2>
+      <div class="flex space-x-2">
+        <button 
+          (click)="applyFilter('all')" 
+          [class.bg-blue-600]="activeFilter === 'all'"
+          [class.text-white]="activeFilter === 'all'"
+          [class.bg-gray-200]="activeFilter !== 'all'"
+          [class.text-gray-700]="activeFilter !== 'all'"
+          class="px-3 py-1 rounded-md hover:bg-blue-700 hover:text-white transition"
+        >
+          All
+        </button>
+        <button 
+          (click)="applyFilter('new')" 
+          [class.bg-blue-600]="activeFilter === 'new'"
+          [class.text-white]="activeFilter === 'new'"
+          [class.bg-gray-200]="activeFilter !== 'new'"
+          [class.text-gray-700]="activeFilter !== 'new'"
+          class="px-3 py-1 rounded-md hover:bg-blue-700 hover:text-white transition"
+        >
+          New
+        </button>
+        <button 
+          (click)="applyFilter('approved')" 
+          [class.bg-blue-600]="activeFilter === 'approved'"
+          [class.text-white]="activeFilter === 'approved'"
+          [class.bg-gray-200]="activeFilter !== 'approved'"
+          [class.text-gray-700]="activeFilter !== 'approved'"
+          class="px-3 py-1 rounded-md hover:bg-blue-700 hover:text-white transition"
+        >
+          Approved
+        </button>
+        <button 
+          (click)="applyFilter('rejected')" 
+          [class.bg-blue-600]="activeFilter === 'rejected'"
+          [class.text-white]="activeFilter === 'rejected'"
+          [class.bg-gray-200]="activeFilter !== 'rejected'"
+          [class.text-gray-700]="activeFilter !== 'rejected'"
+          class="px-3 py-1 rounded-md hover:bg-blue-700 hover:text-white transition"
+        >
+          Rejected
+        </button>
+        <button 
+          (click)="applyFilter('published')" 
+          [class.bg-blue-600]="activeFilter === 'published'"
+          [class.text-white]="activeFilter === 'published'"
+          [class.bg-gray-200]="activeFilter !== 'published'"
+          [class.text-gray-700]="activeFilter !== 'published'"
+          class="px-3 py-1 rounded-md hover:bg-blue-700 hover:text-white transition"
+        >
+          Published
+        </button>
+      </div>
+    </div>
+    
+    <div *ngIf="loading" class="flex justify-center py-10">
+      <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+    
+    <div *ngIf="error" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+      {{ error }}
+    </div>
+    
+    <div *ngIf="!loading && filteredStories.length === 0" class="text-center py-10">
+      <p class="text-gray-500">No stories found for the selected filter.</p>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <app-story-card
+        *ngFor="let story of filteredStories"
+        [story]="story"
+        (approve)="onApprove($event)"
+        (reject)="onReject($event)"
+        (edit)="onEdit($event)"
+        (publish)="onPublish($event)"
+      ></app-story-card>
+    </div>
+  </div>

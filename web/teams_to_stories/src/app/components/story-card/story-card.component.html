@@ -1,1 +1,113 @@
-<p>story-card works!</p>
+<div class="bg-white rounded-lg shadow-md overflow-hidden">
+    <div class="p-4">
+      <div class="flex justify-between items-start mb-3">
+        <h3 class="text-lg font-semibold">{{ story().title }}</h3>
+        <div class="flex space-x-2">
+          <span 
+            *ngIf="story().status" 
+            [class]="'px-2 py-1 rounded-full text-xs font-medium ' + getStatusClass()"
+          >
+            {{ story().status }}
+          </span>
+          <span 
+            [class]="'px-2 py-1 rounded-full text-xs font-medium ' + getPriorityClass()"
+          >
+            {{ story().priority }}
+          </span>
+        </div>
+      </div>
+      
+      <p class="mb-3 text-gray-700">{{ story().userStory }}</p>
+      
+      <div class="flex flex-wrap mb-2">
+        <span 
+          *ngFor="let tag of story().tags" 
+          class="mr-2 mb-2 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full"
+        >
+          {{ tag }}
+        </span>
+        <span 
+          class="mr-2 mb-2 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full"
+        >
+          {{ story().storyPoints }} points
+        </span>
+      </div>
+      
+      <button 
+        (click)="toggleExpand()" 
+        class="text-blue-600 text-sm flex items-center"
+      >
+        <span *ngIf="!isExpanded">Show acceptance criteria</span>
+        <span *ngIf="isExpanded">Hide acceptance criteria</span>
+        <svg 
+          [class.rotate-180]="isExpanded" 
+          class="w-4 h-4 ml-1 transition-transform" 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+      </button>
+    </div>
+    
+    <div *ngIf="isExpanded" class="px-4 pb-4">
+      <h4 class="font-medium mb-2 text-sm text-gray-600">Acceptance Criteria:</h4>
+      <ul class="list-disc pl-5 text-gray-700">
+        <li *ngFor="let criteria of story().acceptanceCriteria" class="mb-1">
+          {{ criteria }}
+        </li>
+      </ul>
+    </div>
+    
+    <div class="px-4 py-3 bg-gray-50 flex justify-end space-x-2 border-t">
+      <ng-container [ngSwitch]="story().status">
+        <ng-container *ngSwitchCase="'Approved'">
+          <button 
+            (click)="onPublish()" 
+            class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+          >
+            Publish to DevOps
+          </button>
+          <button 
+            (click)="onEdit()" 
+            class="px-3 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 text-sm"
+          >
+            Edit
+          </button>
+        </ng-container>
+        
+        <ng-container *ngSwitchCase="'Published'">
+          <a 
+            *ngIf="story().publishedUrl" 
+            [href]="story().publishedUrl" 
+            target="_blank" 
+            class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+          >
+            View in DevOps
+          </a>
+        </ng-container>
+        
+        <ng-container *ngSwitchDefault>
+          <button 
+            (click)="onApprove()" 
+            class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+          >
+            Approve
+          </button>
+          <button 
+            (click)="onEdit()" 
+            class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+          >
+            Edit
+          </button>
+          <button 
+            (click)="onReject()" 
+            class="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+          >
+            Reject
+          </button>
+        </ng-container>
+      </ng-container>
+    </div>
+  </div>

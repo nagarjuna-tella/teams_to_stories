@@ -1,1 +1,40 @@
-<p>review works!</p>
+<div class="container mx-auto py-6 px-4">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">Story Review Dashboard</h1>
+      <button 
+        (click)="goToHome()" 
+        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+      >
+        Process New Transcript
+      </button>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <h3 class="text-gray-500 text-sm uppercase mb-1">Total Stories</h3>
+        <p class="text-3xl font-bold">{{ statistics.total }}</p>
+      </div>
+      
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <h3 class="text-gray-500 text-sm uppercase mb-1">New</h3>
+        <p class="text-3xl font-bold text-blue-600">{{ statistics.new }}</p>
+      </div>
+      
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <h3 class="text-gray-500 text-sm uppercase mb-1">Approved</h3>
+        <p class="text-3xl font-bold text-green-600">{{ statistics.approved }}</p>
+      </div>
+      
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <h3 class="text-gray-500 text-sm uppercase mb-1">Rejected</h3>
+        <p class="text-3xl font-bold text-red-600">{{ statistics.rejected }}</p>
+      </div>
+      
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <h3 class="text-gray-500 text-sm uppercase mb-1">Published</h3>
+        <p class="text-3xl font-bold text-purple-600">{{ statistics.published }}</p>
+      </div>
+    </div>
+    
+    <app-story-list></app-story-list>
+  </div>

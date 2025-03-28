@@ -1,5 +1,3 @@
----
-
 ## Inspiration
 After countless planning meetings where action items were lost in lengthy transcripts or buried in team notes, we realized the process of converting conversations into user stories was both manual and inefficient. We asked: **What if we could automate that?** That's how *Teams to Stories* was born — a tool to streamline sprint planning and bring productivity back to developers.
 

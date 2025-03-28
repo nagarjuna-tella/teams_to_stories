@@ -52,7 +52,7 @@ export class MockDataService {
         tags: ['Integration', 'API', 'DevOps'],
         status: 'Published',
         publishedId: 'WI-234',
-        publishedUrl: 'https://dev.azure.com/organization/project/_workitems/edit/234'
+        publishedUrl: 'https://dev.azure.com/TeamsToStories/AZURE_DEVOPS_PROJECT/_workitems/edit/4'
       },
       {
         id: '4',

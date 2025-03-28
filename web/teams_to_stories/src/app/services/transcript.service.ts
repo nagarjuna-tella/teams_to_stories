@@ -83,7 +83,7 @@ export class TranscriptService {
       return of(this.mockDataService.getMockStories()).pipe(delay(3000));
     }
     
-    return this.http.post<Story[]>(`${this.apiUrl}${meetingId}`, { meetingId })
+    return this.http.get<Story[]>(`${this.apiUrl}${meetingId}`)
       .pipe(
         tap(_ => console.log(`Uploaded transcript request for id=${meetingId}`)),
         catchError(this.handleError<Story[]>('uploadByMeetingId', []))

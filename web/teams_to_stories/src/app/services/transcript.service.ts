@@ -16,7 +16,7 @@ export class TranscriptService {
   private mockDataService = inject(MockDataService);
   
   // Flag to use mock data (for demo or development)
-  private useMockData = true;
+  private useMockData = false;
 
   getTranscript(meetingId: string): Observable<Transcript> {
     if (this.useMockData) {
@@ -83,7 +83,7 @@ export class TranscriptService {
       return of(this.mockDataService.getMockStories()).pipe(delay(3000));
     }
     
-    return this.http.post<Story[]>(`${this.apiUrl}/api/transcript-by-id`, { meetingId })
+    return this.http.post<Story[]>(`${this.apiUrl}${meetingId}`, { meetingId })
       .pipe(
         tap(_ => console.log(`Uploaded transcript request for id=${meetingId}`)),
         catchError(this.handleError<Story[]>('uploadByMeetingId', []))

@@ -1,5 +1,5 @@
 // src/environments/environment.ts
 export const environment = {
     production: false,
-    apiUrl: 'http://localhost:7071' // Azure Functions local dev server
+    apiUrl: 'https://teamstoriesai.azurewebsites.net/api/GetStories?transcript_id=' // Azure Functions local dev server
   };
